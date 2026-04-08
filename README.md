@@ -106,6 +106,10 @@ Scrobble events are logged to `scrobble.jsonl`:
 {"ts":"2026-04-08T20:30:00Z","event":"start","app":"Netflix","title":"Ozymandias","series":"Breaking Bad","season":5,"episode":14,"duration":2820,"progress":0.0,"trakt_action":"start"}
 ```
 
+## Docker Image
+
+The image uses a multi-stage build for a smaller footprint and runs as a non-root `scrobbler` user for security hardening. A built-in healthcheck verifies the Python runtime is responsive.
+
 ## Deployment
 
 CI/CD is handled by GitHub Actions:
