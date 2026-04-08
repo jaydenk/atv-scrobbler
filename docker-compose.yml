@@ -1,6 +1,6 @@
 services:
   atv-scrobbler:
-    build: .
+    image: ghcr.io/jaydenk/atv-scrobbler:latest
     restart: unless-stopped
     # host networking required for Bonjour/mDNS discovery and MRP ephemeral ports
     network_mode: host
@@ -8,5 +8,4 @@ services:
       - ./config.yaml:/app/config.yaml:ro
       - ./trakt_tokens.json:/app/trakt_tokens.json
       - ./scrobble.jsonl:/app/scrobble.jsonl
-    environment:
-      - TZ=Pacific/Auckland
+      - /etc/localtime:/etc/localtime:ro

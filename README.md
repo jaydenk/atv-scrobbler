@@ -51,17 +51,41 @@ touch trakt_tokens.json scrobble.jsonl
 docker compose up -d
 ```
 
-On first run, check the logs for the Trakt authorization prompt:
+The container image is pulled from GHCR:
 
-```bash
-docker compose logs -f
+```yaml
+# docker-compose.yml
+services:
+  atv-scrobbler:
+    image: ghcr.io/jaydenk/atv-scrobbler:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./trakt_tokens.json:/app/trakt_tokens.json
+      - ./scrobble.jsonl:/app/scrobble.jsonl
+      - /etc/localtime:/etc/localtime:ro
 ```
-
-You'll see a code to enter at https://trakt.tv/activate. After authorizing, tokens are saved and the service starts monitoring.
 
 ### 5. Connect Sequel to Trakt
 
 In Sequel (requires Sequel+): Settings > Trakt > Connect. Choose "Merge" to keep existing data.
+
+## First Run
+
+On first start, the service runs an interactive Trakt OAuth device flow. Check the container logs:
+
+```bash
+docker compose logs -f atv-scrobbler
+```
+
+You will see a message like:
+
+```
+Go to https://trakt.tv/activate and enter code: A1B2C3D4
+```
+
+Open [trakt.tv/activate](https://trakt.tv/activate) in a browser, sign in, and enter the code shown in the logs. Once authorised, tokens are saved to `trakt_tokens.json` and the service begins monitoring your Apple TV. Subsequent restarts reuse the saved tokens — no re-authorisation is needed unless the tokens expire or are deleted.
 
 ## Configuration
 
@@ -81,6 +105,15 @@ Scrobble events are logged to `scrobble.jsonl`:
 ```json
 {"ts":"2026-04-08T20:30:00Z","event":"start","app":"Netflix","title":"Ozymandias","series":"Breaking Bad","season":5,"episode":14,"duration":2820,"progress":0.0,"trakt_action":"start"}
 ```
+
+## Deployment
+
+CI/CD is handled by GitHub Actions:
+
+- **Build:** On push to `main`, a workflow builds a multi-architecture Docker image (linux/amd64, linux/arm64) and pushes it to `ghcr.io/jaydenk/atv-scrobbler:latest`.
+- **Deploy:** After a successful build, the workflow connects to **pimento** (Raspberry Pi 5) via Tailscale SSH and runs `docker compose pull && docker compose up -d` to roll out the new image.
+
+No manual builds or image transfers are required — merging to `main` triggers the full pipeline.
 
 ## Known limitations
 

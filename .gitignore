@@ -1,0 +1,37 @@
+# Runtime data (never committed)
+config.yaml
+trakt_tokens.json
+scrobble.jsonl
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+*.egg-info/
+.eggs/
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Claude
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+TODO.md
+
+# Docker override
+docker-compose.override.yml
