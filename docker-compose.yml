@@ -1,11 +1,19 @@
 services:
   atv-scrobbler:
     image: ghcr.io/jaydenk/atv-scrobbler:latest
+    container_name: atv-scrobbler
     restart: unless-stopped
-    # host networking required for Bonjour/mDNS discovery and MRP ephemeral ports
+    # Host networking required for Bonjour/mDNS discovery and MRP ephemeral ports
     network_mode: host
+    mem_limit: 128m
+    memswap_limit: 128m
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./trakt_tokens.json:/app/trakt_tokens.json
       - ./scrobble.jsonl:/app/scrobble.jsonl
       - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import time; from pathlib import Path; t=float(Path('/app/heartbeat').read_text()); assert time.time()-t < 60"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
