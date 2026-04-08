@@ -3,6 +3,7 @@ FROM python:3.12-slim AS build
 WORKDIR /app
 
 COPY pyproject.toml .
+COPY atv_scrobbler/ atv_scrobbler/
 RUN pip install --no-cache-dir .
 
 FROM python:3.12-slim
