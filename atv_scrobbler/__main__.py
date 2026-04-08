@@ -6,6 +6,7 @@ import asyncio
 import logging
 import signal
 import sys
+import time
 from pathlib import Path
 
 from .config import Config
@@ -35,6 +36,16 @@ def main() -> None:
         sys.exit(1)
 
     asyncio.run(_async_main(config))
+
+
+async def _heartbeat_loop(interval: int = 15) -> None:
+    heartbeat_path = Path("/app/heartbeat")
+    while True:
+        try:
+            heartbeat_path.write_text(str(time.time()))
+        except OSError:
+            pass
+        await asyncio.sleep(interval)
 
 
 async def _async_main(config: Config) -> None:
@@ -75,6 +86,7 @@ async def _async_main(config: Config) -> None:
 
     # Run monitor in background, wait for shutdown
     monitor_task = asyncio.create_task(monitor.run())
+    heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
     logger.info("atv-scrobbler started — monitoring Apple TV")
 
@@ -85,6 +97,11 @@ async def _async_main(config: Config) -> None:
     monitor_task.cancel()
     try:
         await monitor_task
+    except asyncio.CancelledError:
+        pass
+    heartbeat_task.cancel()
+    try:
+        await heartbeat_task
     except asyncio.CancelledError:
         pass
     await trakt.close()

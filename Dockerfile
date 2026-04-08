@@ -25,9 +25,8 @@ RUN chown -R scrobbler:scrobbler /app
 
 USER scrobbler
 
-# Healthcheck: verify the Python process is running
-# Will be upgraded to heartbeat file check in Task 2
+# Healthcheck: verify the asyncio event loop is alive by checking heartbeat freshness
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD python -c "import sys; sys.exit(0)" || exit 1
+    CMD python -c "import time; from pathlib import Path; t=float(Path('/app/heartbeat').read_text()); assert time.time()-t < 60" || exit 1
 
 ENTRYPOINT ["python", "-m", "atv_scrobbler"]

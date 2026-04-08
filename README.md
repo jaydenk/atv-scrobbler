@@ -108,7 +108,7 @@ Scrobble events are logged to `scrobble.jsonl`:
 
 ## Docker Image
 
-The image uses a multi-stage build for a smaller footprint and runs as a non-root `scrobbler` user for security hardening. A built-in healthcheck verifies the Python runtime is responsive.
+The image uses a multi-stage build for a smaller footprint and runs as a non-root `scrobbler` user for security hardening. A built-in healthcheck verifies the asyncio event loop is alive by checking a heartbeat file written every 15 seconds — if the heartbeat is older than 60 seconds, the container is marked unhealthy.
 
 ## Deployment
 
