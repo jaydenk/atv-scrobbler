@@ -1,0 +1,13 @@
+[project]
+name = "atv-scrobbler"
+version = "0.1.0"
+description = "Apple TV → Trakt scrobbler service"
+requires-python = ">=3.10"
+dependencies = [
+    "pyatv>=0.16.0",
+    "httpx>=0.27.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+atv-scrobbler = "atv_scrobbler.__main__:main"

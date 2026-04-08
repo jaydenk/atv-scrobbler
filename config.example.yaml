@@ -1,0 +1,29 @@
+apple_tv:
+  # Device identifier from `atvremote scan` (use the Identifier field)
+  # Leave blank to auto-discover the first Apple TV on the network
+  identifier: ""
+
+trakt:
+  # Register an API app at https://trakt.tv/oauth/applications
+  # Redirect URI should be: urn:ietf:wg:oauth:2.0:oob
+  client_id: ""
+  client_secret: ""
+
+scrobble:
+  # Minimum content duration (seconds) to scrobble — filters out menus, trailers
+  min_duration: 120
+  # Seconds to wait before treating idle/stopped as a real stop
+  # (Netflix drops to idle between episodes briefly)
+  debounce_seconds: 30
+  # Apps to ignore (bundle identifiers)
+  ignored_apps:
+    - "com.apple.Fitness"
+    - "com.apple.TVHomeScreen"
+  # Media types to scrobble (video, tv, music)
+  media_types:
+    - video
+    - tv
+
+logging:
+  file: "scrobble.jsonl"
+  level: "info"
