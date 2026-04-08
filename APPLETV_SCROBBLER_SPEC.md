@@ -72,7 +72,7 @@ Uses pyatv's `PushListener` to receive real-time now-playing updates from the Ap
 
 Handles the messy reality of push updates: deduplication, debouncing, and state transitions.
 
-**Key behaviors:**
+**Key behaviours:**
 - **Debounce rapid transitions** — Netflix drops to idle during intros and between episodes. Don't scrobble "stop" for gaps under 30 seconds.
 - **Track current item** — Use the `hash` field to detect when content changes vs. position updates for the same content.
 - **Calculate progress** — `progress = (position / total_time) * 100`. Trakt auto-marks as watched at >80%.

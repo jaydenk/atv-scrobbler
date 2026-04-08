@@ -74,7 +74,7 @@ async def _async_main(config: Config) -> None:
     monitor = ATVMonitor(config.apple_tv, config.scrobble, state)
 
     # Handle shutdown signals
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     shutdown_event = asyncio.Event()
 
     def _signal_handler() -> None:

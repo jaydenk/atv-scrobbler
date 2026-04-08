@@ -244,13 +244,13 @@ template:
 
 ---
 
-## 5. Limitations and Per-App Behavior
+## 5. Limitations and Per-App Behaviour
 
 ### General Principle
 
 The Apple TV exposes now-playing metadata **only if the app reports it via the system media player framework (MPNowPlayingInfoCenter)**. Apps that implement their own custom media player and bypass the system framework will show no metadata or incomplete metadata. **There is nothing pyatv or any external tool can do about this -- they can only read what the device reports.**
 
-### Per-App Behavior
+### Per-App Behaviour
 
 | App | Title | Duration/Position | Media Type | Notes |
 |---|---|---|---|---|

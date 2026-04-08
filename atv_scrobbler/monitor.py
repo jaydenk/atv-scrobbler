@@ -54,7 +54,7 @@ class ATVMonitor(interface.PushListener):
 
     async def _connect_and_listen(self) -> None:
         logger.info("Scanning for Apple TV...")
-        atvs = await pyatv.scan(asyncio.get_event_loop())
+        atvs = await pyatv.scan(asyncio.get_running_loop())
 
         if not atvs:
             logger.error("No Apple TV found on the network")
@@ -66,7 +66,7 @@ class ATVMonitor(interface.PushListener):
             return
 
         logger.info("Connecting to %s (%s)...", config.name, config.address)
-        self._atv = await pyatv.connect(config, asyncio.get_event_loop())
+        self._atv = await pyatv.connect(config, asyncio.get_running_loop())
         logger.info("Connected to %s", config.name)
 
         # Start push updates
@@ -135,7 +135,7 @@ class ATVMonitor(interface.PushListener):
         )
 
         # Schedule state update on the event loop (push callbacks are sync)
-        asyncio.get_event_loop().create_task(
+        asyncio.get_running_loop().create_task(
             self.state.update(info, state_str, playstatus.position, playstatus.total_time)
         )
 

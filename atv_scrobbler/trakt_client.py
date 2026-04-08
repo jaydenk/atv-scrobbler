@@ -101,7 +101,7 @@ class TraktClient:
 
         print()
         print("=" * 50)
-        print("  TRAKT AUTHORIZATION REQUIRED")
+        print("  TRAKT AUTHORISATION REQUIRED")
         print(f"  Go to: {verification_url}")
         print(f"  Enter code: {user_code}")
         print("=" * 50)
@@ -120,13 +120,13 @@ class TraktClient:
                 logger.info("Trakt device auth completed successfully")
                 return
             if poll_resp.status_code == 400:
-                # Pending — user hasn't authorized yet
+                # Pending — user hasn't authorised yet
                 continue
             if poll_resp.status_code in (404, 410, 418, 429):
                 logger.error("Trakt device auth failed: %s", poll_resp.status_code)
                 raise RuntimeError(f"Trakt auth failed with status {poll_resp.status_code}")
 
-        raise RuntimeError("Trakt device auth timed out — user did not authorize in time")
+        raise RuntimeError("Trakt device auth timed out — user did not authorise in time")
 
     async def _authed_request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         if time.time() >= self._expires_at - 86400 and self._refresh_token:
