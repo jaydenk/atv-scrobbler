@@ -2,6 +2,11 @@ FROM python:3.12-slim AS build
 
 WORKDIR /app
 
+# Build deps for cffi/chacha20poly1305 (needed by pyatv on arm64)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml .
 COPY atv_scrobbler/ atv_scrobbler/
 RUN pip install --no-cache-dir .
