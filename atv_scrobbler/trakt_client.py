@@ -28,6 +28,8 @@ class TraktClient:
         self._refresh_token: str | None = None
         self._expires_at: float = 0
         self._client: httpx.AsyncClient | None = None
+        # Cache resolved episodes: (show_title, episode_title) → resolved media payload
+        self._episode_cache: dict[tuple[str, str], dict[str, Any]] = {}
 
     def _token_needs_refresh(self) -> bool:
         return time.time() >= self._expires_at - _TOKEN_REFRESH_BUFFER
@@ -144,7 +146,68 @@ class TraktClient:
 
     # --- Scrobble endpoints ---
 
+    async def _resolve_episode(self, show_title: str, episode_title: str) -> dict[str, Any] | None:
+        """Look up Trakt IDs for an episode by show title + episode title.
+
+        Required when apps (e.g. HBO Max) report the series name and episode title
+        but no season/episode numbers. Caches successful lookups per session.
+        """
+        cache_key = (show_title, episode_title)
+        if cache_key in self._episode_cache:
+            return self._episode_cache[cache_key]
+
+        # Find the show
+        shows = await self.search("show", show_title)
+        if not shows:
+            logger.warning("Trakt: no show match for %r", show_title)
+            return None
+        show = shows[0].get("show", {})
+        show_ids = show.get("ids", {})
+        trakt_id = show_ids.get("trakt")
+        if not trakt_id:
+            return None
+
+        # Fetch all seasons + episodes for the show
+        resp = await self._authed_request(
+            "GET", f"/shows/{trakt_id}/seasons", params={"extended": "episodes"}
+        )
+        if resp.status_code != 200:
+            logger.warning("Trakt: failed to fetch seasons for show %s (trakt id %s)", show_title, trakt_id)
+            return None
+
+        normalised_target = episode_title.strip().lower()
+        for season in resp.json():
+            for ep in season.get("episodes", []) or []:
+                if (ep.get("title") or "").strip().lower() == normalised_target:
+                    resolved = {
+                        "show": {"ids": show_ids},
+                        "episode": {
+                            "season": ep.get("season"),
+                            "number": ep.get("number"),
+                            "ids": ep.get("ids", {}),
+                        },
+                    }
+                    self._episode_cache[cache_key] = resolved
+                    logger.info(
+                        "Resolved episode via search: %s — %r → S%sE%s",
+                        show_title, episode_title, ep.get("season"), ep.get("number"),
+                    )
+                    return resolved
+
+        logger.warning("Trakt: no episode match for %s — %r", show_title, episode_title)
+        return None
+
     async def _scrobble(self, action: str, media: dict[str, Any], progress: float) -> dict | None:
+        # Resolve episode by title if season/number are missing (e.g. HBO Max)
+        episode = media.get("episode") or {}
+        if "show" in media and "season" not in episode and episode.get("title"):
+            show_title = media["show"].get("title")
+            if show_title:
+                resolved = await self._resolve_episode(show_title, episode["title"])
+                if resolved is None:
+                    return None
+                media = resolved
+
         payload = {**media, "progress": progress}
         resp = await self._authed_request("POST", f"/scrobble/{action}", json=payload)
         if resp.status_code == 201:

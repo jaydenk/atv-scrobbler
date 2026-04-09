@@ -29,7 +29,8 @@ class MediaInfo:
     def is_tv(self) -> bool:
         if self.media_type == MediaType.TV:
             return True
-        if self.series_name and self.season_number is not None and self.episode_number is not None:
+        # Any content with a series name is TV content, even without season/episode numbers
+        if self.series_name:
             return True
         return False
 
@@ -64,6 +65,14 @@ def extract_media_info(playing: Any, app_name: str | None = None, app_id: str | 
         content_id=playing.content_identifier,
     )
 
+    # Legacy MPNowPlayingInfoCenter convention: apps like HBO Max put the series
+    # name in the "trackArtistName" field (pyatv exposes this as .artist). Use it
+    # as a series_name fallback for video content.
+    if not info.series_name and info.media_type != MediaType.Music:
+        artist = getattr(playing, "artist", None)
+        if artist:
+            info.series_name = artist
+
     # If series metadata is missing but title looks like an episode string, try parsing it
     if not info.series_name and info.title:
         _try_parse_episode_title(info)
@@ -85,21 +94,28 @@ def _try_parse_episode_title(info: MediaInfo) -> None:
 
 
 def to_trakt_media(info: MediaInfo) -> dict[str, Any] | None:
-    """Convert MediaInfo to a Trakt scrobble payload (the media portion)."""
+    """Convert MediaInfo to a Trakt scrobble payload (the media portion).
+
+    For TV content without season/episode numbers, episode is sent with only a title —
+    the Trakt client resolves it via search before scrobbling.
+    """
     if info.is_tv:
         if not info.series_name:
             logger.warning("TV content detected but no series name — cannot match: title=%s", info.title)
             return None
-        media: dict[str, Any] = {
-            "show": {"title": info.series_name},
-            "episode": {
-                "season": info.season_number or 1,
-                "number": info.episode_number or 1,
-            },
-        }
+        episode: dict[str, Any] = {}
+        if info.season_number is not None and info.episode_number is not None:
+            episode["season"] = info.season_number
+            episode["number"] = info.episode_number
         if info.title:
-            media["episode"]["title"] = info.title
-        return media
+            episode["title"] = info.title
+        if not episode:
+            logger.warning("TV content detected but no episode info — cannot match: series=%s", info.series_name)
+            return None
+        return {
+            "show": {"title": info.series_name},
+            "episode": episode,
+        }
     else:
         if not info.title:
             return None
