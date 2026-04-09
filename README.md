@@ -24,15 +24,42 @@ Note the **Client ID** and **Client Secret**.
 
 ### 2. Pair with Apple TV
 
-Install pyatv and run the pairing wizard:
+pyatv requires pairing credentials to connect to your Apple TV. These credentials are stored in a `.pyatv.conf` file.
+
+#### Find your Apple TV
 
 ```bash
 pip install pyatv
-atvremote scan          # find your Apple TV
-atvremote wizard        # pair all protocols (enter PIN shown on TV)
+atvremote scan
 ```
 
-Note the **Identifier** from the scan output.
+Note the **Identifier** from the scan output — you will need it for the configuration file.
+
+#### Run the pairing wizard
+
+**If running natively** (on the same machine):
+
+```bash
+atvremote wizard
+```
+
+This pairs all protocols (MRP, AirPlay, Companion) and stores credentials in `$HOME/.pyatv.conf`.
+
+**If running via Docker** (recommended):
+
+Run the wizard from the service directory so the credentials file is created where Docker can mount it:
+
+```bash
+cd /path/to/atv-scrobbler
+atvremote --storage .pyatv.conf wizard
+```
+
+Follow the on-screen prompts and enter the PIN displayed on your Apple TV for each protocol. Once complete, the `.pyatv.conf` file will contain the pairing credentials needed by the container.
+
+> **Note:** If you do not already have pyatv installed on the host, you can pair inside a temporary container:
+> ```bash
+> docker run --rm -it --network host -v "$(pwd)/.pyatv.conf:/root/.pyatv.conf" ghcr.io/jaydenk/atv-scrobbler:latest atvremote wizard
+> ```
 
 ### 3. Configure
 
@@ -48,7 +75,15 @@ Fill in your Trakt `client_id`, `client_secret`, and Apple TV `identifier`.
 # Create empty files for volume mounts
 touch trakt_tokens.json scrobble.jsonl
 
+# If you haven't already created .pyatv.conf via the pairing wizard:
+touch .pyatv.conf
+
+# Edit config.yaml with your Trakt credentials and Apple TV identifier
+# Then start the service
 docker compose up -d
+
+# Watch for the Trakt authorisation prompt on first run
+docker compose logs -f
 ```
 
 The container image is pulled from GHCR:
@@ -60,18 +95,23 @@ services:
     image: ghcr.io/jaydenk/atv-scrobbler:latest
     restart: unless-stopped
     network_mode: host
+    environment:
+      - HOME=/app
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./trakt_tokens.json:/app/trakt_tokens.json
       - ./scrobble.jsonl:/app/scrobble.jsonl
+      - ./.pyatv.conf:/app/.pyatv.conf
       - /etc/localtime:/etc/localtime:ro
 ```
+
+The `HOME=/app` environment variable tells pyatv to look for `.pyatv.conf` inside the container at `/app/.pyatv.conf`, which is volume-mounted from the host.
 
 ### 5. Connect Sequel to Trakt
 
 In Sequel (requires Sequel+): Settings > Trakt > Connect. Choose "Merge" to keep existing data.
 
-## First Run
+## First run
 
 On first start, the service runs an interactive Trakt OAuth device flow. Check the container logs:
 
@@ -93,10 +133,15 @@ See `config.example.yaml` for all options. Key settings:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `scrobble.min_duration` | 120 | Ignore content shorter than N seconds |
-| `scrobble.debounce_seconds` | 30 | Wait N seconds before treating idle as "stopped" |
-| `scrobble.ignored_apps` | Fitness, Home Screen | App bundle IDs to skip |
-| `scrobble.media_types` | video, tv | What to scrobble (also: music) |
+| `apple_tv.identifier` | *(empty)* | Device identifier from `atvremote scan`. Leave blank to auto-discover the first Apple TV on the network. |
+| `trakt.client_id` | *(empty)* | Trakt API client ID (required) |
+| `trakt.client_secret` | *(empty)* | Trakt API client secret (required) |
+| `scrobble.min_duration` | `120` | Ignore content shorter than N seconds (filters menus and trailers) |
+| `scrobble.debounce_seconds` | `30` | Wait N seconds before treating idle as "stopped" (handles brief gaps between episodes) |
+| `scrobble.ignored_apps` | `com.apple.Fitness`, `com.apple.TVHomeScreen` | App bundle identifiers to skip |
+| `scrobble.media_types` | `video`, `tv` | What to scrobble (`video`, `tv`, `music`) |
+| `logging.file` | `scrobble.jsonl` | Path to the JSONL event log |
+| `logging.level` | `info` | Log level (`debug`, `info`, `warning`, `error`) |
 
 ## Logs
 
@@ -106,7 +151,7 @@ Scrobble events are logged to `scrobble.jsonl`:
 {"ts":"2026-04-08T20:30:00Z","event":"start","app":"Netflix","title":"Ozymandias","series":"Breaking Bad","season":5,"episode":14,"duration":2820,"progress":0.0,"trakt_action":"start"}
 ```
 
-## Docker Image
+## Docker image
 
 The image uses a multi-stage build for a smaller footprint and runs as a non-root `scrobbler` user for security hardening. A built-in healthcheck verifies the asyncio event loop is alive by checking a heartbeat file written every 15 seconds — if the heartbeat is older than 60 seconds, the container is marked unhealthy.
 
@@ -121,7 +166,8 @@ No manual builds or image transfers are required — merging to `main` triggers 
 
 ## Known limitations
 
+- **pyatv pairing required** — the `.pyatv.conf` file must contain valid pairing credentials. If pairing expires or the Apple TV is factory reset, you will need to re-run `atvremote wizard` and restart the container.
 - **Amazon Prime Video** reports `playbackRate=0.0` (appears paused when playing)
 - **Netflix** drops metadata during intros and between episodes
 - Some niche apps bypass the system media player and report nothing
-- `network_mode: host` is required for Bonjour/mDNS — won't work with bridge networking
+- `network_mode: host` is required for Bonjour/mDNS — the service will not work with bridge networking

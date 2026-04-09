@@ -1,6 +1,7 @@
 apple_tv:
-  # Device identifier from `atvremote scan` (use the Identifier field)
-  # Leave blank to auto-discover the first Apple TV on the network
+  # Device identifier from `atvremote scan` (use the Identifier field).
+  # Leave blank to auto-discover the first Apple TV on the network.
+  # Pairing credentials must exist in .pyatv.conf — see README for setup.
   identifier: ""
 
 trakt:
@@ -10,10 +11,10 @@ trakt:
   client_secret: ""
 
 scrobble:
-  # Minimum content duration (seconds) to scrobble — filters out menus, trailers
+  # Minimum content duration (seconds) to scrobble — filters out menus and trailers
   min_duration: 120
-  # Seconds to wait before treating idle/stopped as a real stop
-  # (Netflix drops to idle between episodes briefly)
+  # Seconds to wait before treating idle/stopped as a real stop.
+  # Netflix drops to idle between episodes briefly, so this avoids false stops.
   debounce_seconds: 30
   # Apps to ignore (bundle identifiers)
   ignored_apps:
@@ -25,5 +26,7 @@ scrobble:
     - tv
 
 logging:
+  # Path to the JSONL event log file
   file: "scrobble.jsonl"
+  # Log level: debug, info, warning, error
   level: "info"
