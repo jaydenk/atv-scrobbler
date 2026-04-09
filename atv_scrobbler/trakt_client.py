@@ -99,13 +99,11 @@ class TraktClient:
         interval = data.get("interval", 5)
         expires_in = data.get("expires_in", 600)
 
-        print()
-        print("=" * 50)
-        print("  TRAKT AUTHORISATION REQUIRED")
-        print(f"  Go to: {verification_url}")
-        print(f"  Enter code: {user_code}")
-        print("=" * 50)
-        print()
+        logger.warning("=" * 50)
+        logger.warning("  TRAKT AUTHORISATION REQUIRED")
+        logger.warning("  Go to: %s", verification_url)
+        logger.warning("  Enter code: %s", user_code)
+        logger.warning("=" * 50)
 
         deadline = time.time() + expires_in
         while time.time() < deadline:

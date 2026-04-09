@@ -29,6 +29,8 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    # Suppress noisy httpx request logging
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
     if not config.trakt.client_id or not config.trakt.client_secret:
         logger.error("Trakt client_id and client_secret must be set in config.yaml")
