@@ -97,7 +97,9 @@ def to_trakt_media(info: MediaInfo) -> dict[str, Any] | None:
     """Convert MediaInfo to a Trakt scrobble payload (the media portion).
 
     For TV content without season/episode numbers, episode is sent with only a title —
-    the Trakt client resolves it via search before scrobbling.
+    the Trakt client resolves it via search before scrobbling. Resolution hints
+    (duration, content_id) are attached under the internal `_hints` key, which the
+    Trakt client strips before sending to the API.
     """
     if info.is_tv:
         if not info.series_name:
@@ -115,6 +117,10 @@ def to_trakt_media(info: MediaInfo) -> dict[str, Any] | None:
         return {
             "show": {"title": info.series_name},
             "episode": episode,
+            "_hints": {
+                "duration": info.duration,
+                "content_id": info.content_id,
+            },
         }
     else:
         if not info.title:

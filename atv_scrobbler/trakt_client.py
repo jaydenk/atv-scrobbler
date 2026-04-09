@@ -28,8 +28,9 @@ class TraktClient:
         self._refresh_token: str | None = None
         self._expires_at: float = 0
         self._client: httpx.AsyncClient | None = None
-        # Cache resolved episodes: (show_title, episode_title) → resolved media payload
-        self._episode_cache: dict[tuple[str, str], dict[str, Any]] = {}
+        # Cache resolved episodes, keyed by content_id when available, else
+        # "show_title::episode_title". Value is the resolved Trakt media payload.
+        self._episode_cache: dict[str, dict[str, Any]] = {}
 
     def _token_needs_refresh(self) -> bool:
         return time.time() >= self._expires_at - _TOKEN_REFRESH_BUFFER
@@ -146,13 +147,28 @@ class TraktClient:
 
     # --- Scrobble endpoints ---
 
-    async def _resolve_episode(self, show_title: str, episode_title: str) -> dict[str, Any] | None:
+    async def _resolve_episode(
+        self,
+        show_title: str,
+        episode_title: str,
+        hints: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         """Look up Trakt IDs for an episode by show title + episode title.
 
         Required when apps (e.g. HBO Max) report the series name and episode title
-        but no season/episode numbers. Caches successful lookups per session.
+        but no season/episode numbers. Uses hints (duration, content_id) to pick the
+        best match when multiple episodes share the same title across seasons.
+
+        Ranking strategy:
+        1. Filter to episodes whose runtime matches the pyatv duration (±1 min)
+        2. Among those, prefer the most recently aired episode (current seasons first)
         """
-        cache_key = (show_title, episode_title)
+        hints = hints or {}
+        content_id = hints.get("content_id")
+        duration_hint = hints.get("duration")
+
+        # Prefer content_id as cache key — stable per episode, no ambiguity
+        cache_key = content_id or f"{show_title}::{episode_title}"
         if cache_key in self._episode_cache:
             return self._episode_cache[cache_key]
 
@@ -169,46 +185,93 @@ class TraktClient:
 
         # Fetch all seasons + episodes for the show
         resp = await self._authed_request(
-            "GET", f"/shows/{trakt_id}/seasons", params={"extended": "episodes"}
+            "GET",
+            f"/shows/{trakt_id}/seasons",
+            params={"extended": "episodes,full"},
         )
         if resp.status_code != 200:
             logger.warning("Trakt: failed to fetch seasons for show %s (trakt id %s)", show_title, trakt_id)
             return None
 
+        # Collect all episodes whose title matches
         normalised_target = episode_title.strip().lower()
+        candidates: list[dict[str, Any]] = []
         for season in resp.json():
             for ep in season.get("episodes", []) or []:
                 if (ep.get("title") or "").strip().lower() == normalised_target:
-                    resolved = {
-                        "show": {"ids": show_ids},
-                        "episode": {
-                            "season": ep.get("season"),
-                            "number": ep.get("number"),
-                            "ids": ep.get("ids", {}),
-                        },
-                    }
-                    self._episode_cache[cache_key] = resolved
-                    logger.info(
-                        "Resolved episode via search: %s — %r → S%sE%s",
-                        show_title, episode_title, ep.get("season"), ep.get("number"),
-                    )
-                    return resolved
+                    candidates.append(ep)
 
-        logger.warning("Trakt: no episode match for %s — %r", show_title, episode_title)
-        return None
+        if not candidates:
+            logger.warning("Trakt: no episode match for %s — %r", show_title, episode_title)
+            return None
+
+        best = self._pick_best_episode(candidates, duration_hint)
+
+        resolved = {
+            "show": {"ids": show_ids},
+            "episode": {
+                "season": best.get("season"),
+                "number": best.get("number"),
+                "ids": best.get("ids", {}),
+            },
+        }
+        self._episode_cache[cache_key] = resolved
+        if len(candidates) > 1:
+            logger.info(
+                "Resolved episode via search (%d candidates): %s — %r → S%sE%s [duration_hint=%s]",
+                len(candidates), show_title, episode_title,
+                best.get("season"), best.get("number"), duration_hint,
+            )
+        else:
+            logger.info(
+                "Resolved episode via search: %s — %r → S%sE%s",
+                show_title, episode_title, best.get("season"), best.get("number"),
+            )
+        return resolved
+
+    @staticmethod
+    def _pick_best_episode(
+        candidates: list[dict[str, Any]],
+        duration_hint: int | None,
+    ) -> dict[str, Any]:
+        """Rank episode candidates: prefer duration match, then most recently aired."""
+        # Duration tiebreaker: Trakt's runtime is in minutes, MRP's duration is in seconds
+        if duration_hint:
+            duration_minutes = duration_hint / 60.0
+            close_matches = [
+                ep for ep in candidates
+                if ep.get("runtime") and abs(ep["runtime"] - duration_minutes) <= 1
+            ]
+            if close_matches:
+                candidates = close_matches
+
+        # Most recently aired first; episodes with no air date sort last.
+        with_dates = sorted(
+            (ep for ep in candidates if ep.get("first_aired")),
+            key=lambda ep: ep["first_aired"],
+            reverse=True,
+        )
+        without_dates = [ep for ep in candidates if not ep.get("first_aired")]
+        return (with_dates + without_dates)[0]
 
     async def _scrobble(self, action: str, media: dict[str, Any], progress: float) -> dict | None:
+        # Extract hints (used for episode resolution); strip from outgoing payload.
+        # Important: don't mutate `media` — state.py reuses the same dict across
+        # start/pause/stop calls.
+        hints = media.get("_hints")
+
         # Resolve episode by title if season/number are missing (e.g. HBO Max)
         episode = media.get("episode") or {}
         if "show" in media and "season" not in episode and episode.get("title"):
             show_title = media["show"].get("title")
             if show_title:
-                resolved = await self._resolve_episode(show_title, episode["title"])
+                resolved = await self._resolve_episode(show_title, episode["title"], hints)
                 if resolved is None:
                     return None
                 media = resolved
 
-        payload = {**media, "progress": progress}
+        payload = {k: v for k, v in media.items() if k != "_hints"}
+        payload["progress"] = progress
         resp = await self._authed_request("POST", f"/scrobble/{action}", json=payload)
         if resp.status_code == 201:
             result = resp.json()
