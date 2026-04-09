@@ -8,12 +8,15 @@ import time
 from pathlib import Path
 from typing import Any
 
+import asyncio
+
 import httpx
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.trakt.tv"
 TOKENS_FILE = "data/trakt_tokens.json"
+_TOKEN_REFRESH_BUFFER = 86400  # refresh if <1 day before expiry
 
 
 class TraktClient:
@@ -25,6 +28,9 @@ class TraktClient:
         self._refresh_token: str | None = None
         self._expires_at: float = 0
         self._client: httpx.AsyncClient | None = None
+
+    def _token_needs_refresh(self) -> bool:
+        return time.time() >= self._expires_at - _TOKEN_REFRESH_BUFFER
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -75,7 +81,7 @@ class TraktClient:
     async def ensure_auth(self) -> None:
         """Load tokens from disk, refresh if expired, or run device auth flow."""
         if self._load_tokens():
-            if time.time() < self._expires_at - 86400:  # refresh if <1 day left
+            if not self._token_needs_refresh():
                 logger.info("Trakt auth loaded from %s", self.tokens_path)
                 return
             if self._refresh_token:
@@ -107,7 +113,7 @@ class TraktClient:
 
         deadline = time.time() + expires_in
         while time.time() < deadline:
-            await _async_sleep(interval)
+            await asyncio.sleep(interval)
             poll_resp = await client.post("/oauth/device/token", json={
                 "code": device_code,
                 "client_id": self.client_id,
@@ -127,7 +133,7 @@ class TraktClient:
         raise RuntimeError("Trakt device auth timed out — user did not authorise in time")
 
     async def _authed_request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
-        if time.time() >= self._expires_at - 86400 and self._refresh_token:
+        if self._token_needs_refresh() and self._refresh_token:
             await self._refresh_access_token()
 
         client = await self._get_client()
@@ -138,40 +144,28 @@ class TraktClient:
 
     # --- Scrobble endpoints ---
 
-    async def scrobble_start(self, media: dict[str, Any], progress: float) -> dict | None:
+    async def _scrobble(self, action: str, media: dict[str, Any], progress: float) -> dict | None:
         payload = {**media, "progress": progress}
-        resp = await self._authed_request("POST", "/scrobble/start", json=payload)
-        if resp.status_code == 201:
-            logger.info("Scrobble start: %s", _summary(media))
-            return resp.json()
-        if resp.status_code == 404:
-            logger.warning("Scrobble start: not found on Trakt — %s", _summary(media))
-            return None
-        logger.error("Scrobble start failed [%s]: %s", resp.status_code, resp.text)
-        return None
-
-    async def scrobble_pause(self, media: dict[str, Any], progress: float) -> dict | None:
-        payload = {**media, "progress": progress}
-        resp = await self._authed_request("POST", "/scrobble/pause", json=payload)
-        if resp.status_code == 201:
-            logger.info("Scrobble pause at %.1f%%: %s", progress, _summary(media))
-            return resp.json()
-        logger.error("Scrobble pause failed [%s]: %s", resp.status_code, resp.text)
-        return None
-
-    async def scrobble_stop(self, media: dict[str, Any], progress: float) -> dict | None:
-        payload = {**media, "progress": progress}
-        resp = await self._authed_request("POST", "/scrobble/stop", json=payload)
+        resp = await self._authed_request("POST", f"/scrobble/{action}", json=payload)
         if resp.status_code == 201:
             result = resp.json()
-            action = result.get("action", "unknown")
-            logger.info("Scrobble stop (%s) at %.1f%%: %s", action, progress, _summary(media))
+            trakt_action = result.get("action", action)
+            logger.info("Scrobble %s (%s) at %.1f%%: %s", action, trakt_action, progress, _summary(media))
             return result
         if resp.status_code == 404:
-            logger.warning("Scrobble stop: not found on Trakt — %s", _summary(media))
+            logger.warning("Scrobble %s: not found on Trakt — %s", action, _summary(media))
             return None
-        logger.error("Scrobble stop failed [%s]: %s", resp.status_code, resp.text)
+        logger.error("Scrobble %s failed [%s]: %s", action, resp.status_code, resp.text)
         return None
+
+    async def scrobble_start(self, media: dict[str, Any], progress: float) -> dict | None:
+        return await self._scrobble("start", media, progress)
+
+    async def scrobble_pause(self, media: dict[str, Any], progress: float) -> dict | None:
+        return await self._scrobble("pause", media, progress)
+
+    async def scrobble_stop(self, media: dict[str, Any], progress: float) -> dict | None:
+        return await self._scrobble("stop", media, progress)
 
     async def search(self, media_type: str, query: str) -> list[dict]:
         resp = await self._authed_request("GET", f"/search/{media_type}", params={"query": query})
@@ -192,8 +186,3 @@ def _summary(media: dict) -> str:
     if "movie" in media:
         return media["movie"].get("title", "?")
     return str(media)
-
-
-async def _async_sleep(seconds: float) -> None:
-    import asyncio
-    await asyncio.sleep(seconds)

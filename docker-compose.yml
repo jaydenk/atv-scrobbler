@@ -16,7 +16,7 @@ services:
       - ./data:/app/data
       - /etc/localtime:/etc/localtime:ro
     healthcheck:
-      test: ["CMD", "python", "-c", "import time; from pathlib import Path; t=float(Path('/app/heartbeat').read_text()); assert time.time()-t < 60"]
+      test: ["CMD-SHELL", "find /app/heartbeat -mmin -1 | grep -q heartbeat"]
       interval: 30s
       timeout: 5s
       retries: 3

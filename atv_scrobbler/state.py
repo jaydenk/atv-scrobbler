@@ -9,6 +9,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from pyatv.const import DeviceState
+
 from .matcher import MediaInfo, to_trakt_media
 
 logger = logging.getLogger(__name__)
@@ -110,17 +112,17 @@ class ScrobbleState:
     async def _do_start(self, info: MediaInfo, trakt_media: dict[str, Any]) -> None:
         if not self._sink:
             return
-        progress = self._compute_progress(info.duration and 0, info.duration)
+        progress = self._compute_progress(0, info.duration)
         result = await self._sink.scrobble_start(trakt_media, progress)
         if self._event_logger:
             self._event_logger.log_event("start", info, progress, result)
         self._scrobble_started = True
 
-    async def update(self, info: MediaInfo, device_state_str: str, position: int | None, duration: int | None) -> None:
+    async def update(self, info: MediaInfo, device_state: DeviceState, position: int | None, duration: int | None) -> None:
         """Called on every pyatv push update. Drives the state machine."""
-        is_playing = device_state_str == "DeviceState.Playing"
-        is_paused = device_state_str == "DeviceState.Paused"
-        is_idle = device_state_str in ("DeviceState.Idle", "DeviceState.Stopped")
+        is_playing = device_state == DeviceState.Playing
+        is_paused = device_state == DeviceState.Paused
+        is_idle = device_state in (DeviceState.Idle, DeviceState.Stopped)
 
         # Update position tracking
         if position is not None:

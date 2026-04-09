@@ -20,6 +20,13 @@ logger = logging.getLogger(__name__)
 # How long to wait before retrying connection after a failure
 RECONNECT_DELAY = 15
 
+# Map pyatv MediaType enum to config-friendly strings
+_MEDIA_TYPE_MAP = {
+    MediaType.Video: "video",
+    MediaType.TV: "tv",
+    MediaType.Music: "music",
+}
+
 
 class ATVMonitor(interface.PushListener):
     """Connects to an Apple TV and feeds push updates into the ScrobbleState."""
@@ -30,6 +37,7 @@ class ATVMonitor(interface.PushListener):
         self.state = state
         self._atv: Any = None
         self._running = False
+        self._storage: FileStorage | None = None
 
     async def run(self) -> None:
         """Main loop — connect, listen, reconnect on failure."""
@@ -56,12 +64,13 @@ class ATVMonitor(interface.PushListener):
     async def _connect_and_listen(self) -> None:
         loop = asyncio.get_running_loop()
 
-        # Load pairing credentials from pyatv's default storage (~/.pyatv.conf)
-        storage = FileStorage.default_storage(loop)
-        await storage.load()
+        # Load pairing credentials once, reuse across reconnections
+        if self._storage is None:
+            self._storage = FileStorage.default_storage(loop)
+            await self._storage.load()
 
         logger.info("Scanning for Apple TV...")
-        atvs = await pyatv.scan(loop, storage=storage)
+        atvs = await pyatv.scan(loop, storage=self._storage)
 
         if not atvs:
             logger.error("No Apple TV found on the network")
@@ -73,7 +82,7 @@ class ATVMonitor(interface.PushListener):
             return
 
         logger.info("Connecting to %s (%s)...", config.name, config.address)
-        self._atv = await pyatv.connect(config, loop, storage=storage)
+        self._atv = await pyatv.connect(config, loop, storage=self._storage)
         logger.info("Connected to %s", config.name)
 
         # Start push updates
@@ -103,7 +112,7 @@ class ATVMonitor(interface.PushListener):
 
     def playstatus_update(self, updater: Any, playstatus: Any) -> None:
         """Called by pyatv when now-playing state changes."""
-        state_str = str(playstatus.device_state)
+        device_state = playstatus.device_state
 
         # Check if we should ignore this app
         app_name = None
@@ -120,34 +129,28 @@ class ATVMonitor(interface.PushListener):
             return
 
         # Check media type filter
-        media_type = playstatus.media_type
-        type_map = {
-            MediaType.Video: "video",
-            MediaType.TV: "tv",
-            MediaType.Music: "music",
-        }
-        type_str = type_map.get(media_type, "unknown")
-        allowed = self.scrobble_config.media_types
-        # Allow if media type matches config, or if it's unknown (let it through — better to scrobble than miss)
-        if type_str not in allowed and type_str != "unknown":
+        type_str = _MEDIA_TYPE_MAP.get(playstatus.media_type, "unknown")
+        if type_str not in self.scrobble_config.media_types and type_str != "unknown":
             return
 
         info = extract_media_info(playstatus, app_name=app_name, app_id=app_id)
 
         logger.debug(
             "Push update: state=%s title=%s series=%s S%sE%s app=%s pos=%s/%s",
-            state_str, info.title, info.series_name,
+            device_state, info.title, info.series_name,
             info.season_number, info.episode_number,
             info.app_name, playstatus.position, playstatus.total_time,
         )
 
         # Schedule state update on the event loop (push callbacks are sync)
         asyncio.get_running_loop().create_task(
-            self.state.update(info, state_str, playstatus.position, playstatus.total_time)
+            self.state.update(info, device_state, playstatus.position, playstatus.total_time)
         )
 
     def playstatus_error(self, updater: Any, exception: Exception) -> None:
         logger.error("Push updater error: %s", exception)
+        # Stop any active scrobble before disconnecting
+        asyncio.get_running_loop().create_task(self.state.force_stop())
         # Force disconnect so the main loop reconnects
         if self._atv:
             self._atv.close()
