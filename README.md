@@ -22,46 +22,7 @@ Go to [trakt.tv/oauth/applications](https://trakt.tv/oauth/applications) and cre
 
 Note the **Client ID** and **Client Secret**.
 
-### 2. Pair with Apple TV
-
-pyatv requires pairing credentials to connect to your Apple TV. These credentials are stored in a `.pyatv.conf` file.
-
-#### Find your Apple TV
-
-```bash
-pip install pyatv
-atvremote scan
-```
-
-Note the **Identifier** from the scan output — you will need it for the configuration file.
-
-#### Run the pairing wizard
-
-**If running natively** (on the same machine):
-
-```bash
-atvremote wizard
-```
-
-This pairs all protocols (MRP, AirPlay, Companion) and stores credentials in `$HOME/.pyatv.conf`.
-
-**If running via Docker** (recommended):
-
-Run the wizard from the service directory so the credentials file is created where Docker can mount it:
-
-```bash
-cd /path/to/atv-scrobbler
-atvremote --storage .pyatv.conf wizard
-```
-
-Follow the on-screen prompts and enter the PIN displayed on your Apple TV for each protocol. Once complete, the `.pyatv.conf` file will contain the pairing credentials needed by the container.
-
-> **Note:** If you do not already have pyatv installed on the host, you can pair inside a temporary container:
-> ```bash
-> docker run --rm -it --network host -v "$(pwd)/.pyatv.conf:/root/.pyatv.conf" ghcr.io/jaydenk/atv-scrobbler:latest atvremote wizard
-> ```
-
-### 3. Configure
+### 2. Configure
 
 ```bash
 cp config.example.yaml config.yaml
@@ -69,43 +30,32 @@ cp config.example.yaml config.yaml
 
 Fill in your Trakt `client_id`, `client_secret`, and Apple TV `identifier`.
 
-### 4. Run with Docker Compose
+### 3. Pair with Apple TV
+
+pyatv requires pairing credentials to connect to your Apple TV. The container includes pyatv, so you can pair directly through Docker — no host installation needed.
+
+Find your Apple TV and note the **Identifier**:
 
 ```bash
-# Create empty files for volume mounts
-touch trakt_tokens.json scrobble.jsonl
+docker compose run --rm atv-scrobbler atvremote scan
+```
 
-# If you haven't already created .pyatv.conf via the pairing wizard:
-touch .pyatv.conf
+Run the pairing wizard (enter the PIN displayed on your Apple TV for each protocol):
 
-# Edit config.yaml with your Trakt credentials and Apple TV identifier
-# Then start the service
+```bash
+docker compose run --rm atv-scrobbler atvremote wizard
+```
+
+Credentials are saved to `data/.pyatv.conf` automatically.
+
+### 4. Start the service
+
+```bash
 docker compose up -d
-
-# Watch for the Trakt authorisation prompt on first run
-docker compose logs -f
+docker compose logs -f   # watch for Trakt authorisation prompt
 ```
 
-The container image is pulled from GHCR:
-
-```yaml
-# docker-compose.yml
-services:
-  atv-scrobbler:
-    image: ghcr.io/jaydenk/atv-scrobbler:latest
-    restart: unless-stopped
-    network_mode: host
-    environment:
-      - HOME=/app
-    volumes:
-      - ./config.yaml:/app/config.yaml:ro
-      - ./trakt_tokens.json:/app/trakt_tokens.json
-      - ./scrobble.jsonl:/app/scrobble.jsonl
-      - ./.pyatv.conf:/app/.pyatv.conf
-      - /etc/localtime:/etc/localtime:ro
-```
-
-The `HOME=/app` environment variable tells pyatv to look for `.pyatv.conf` inside the container at `/app/.pyatv.conf`, which is volume-mounted from the host.
+Runtime data (Trakt tokens, scrobble log, pyatv credentials) is persisted in the `data/` directory, which is volume-mounted from the host.
 
 ### 5. Connect Sequel to Trakt
 
@@ -125,7 +75,7 @@ You will see a message like:
 Go to https://trakt.tv/activate and enter code: A1B2C3D4
 ```
 
-Open [trakt.tv/activate](https://trakt.tv/activate) in a browser, sign in, and enter the code shown in the logs. Once authorised, tokens are saved to `trakt_tokens.json` and the service begins monitoring your Apple TV. Subsequent restarts reuse the saved tokens — no re-authorisation is needed unless the tokens expire or are deleted.
+Open [trakt.tv/activate](https://trakt.tv/activate) in a browser, sign in, and enter the code shown in the logs. Once authorised, tokens are saved to `data/trakt_tokens.json` and the service begins monitoring your Apple TV. Subsequent restarts reuse the saved tokens — no re-authorisation is needed unless the tokens expire or are deleted.
 
 ## Configuration
 
@@ -140,12 +90,12 @@ See `config.example.yaml` for all options. Key settings:
 | `scrobble.debounce_seconds` | `30` | Wait N seconds before treating idle as "stopped" (handles brief gaps between episodes) |
 | `scrobble.ignored_apps` | `com.apple.Fitness`, `com.apple.TVHomeScreen` | App bundle identifiers to skip |
 | `scrobble.media_types` | `video`, `tv` | What to scrobble (`video`, `tv`, `music`) |
-| `logging.file` | `scrobble.jsonl` | Path to the JSONL event log |
+| `logging.file` | `data/scrobble.jsonl` | Path to the JSONL event log |
 | `logging.level` | `info` | Log level (`debug`, `info`, `warning`, `error`) |
 
 ## Logs
 
-Scrobble events are logged to `scrobble.jsonl`:
+Scrobble events are logged to `data/scrobble.jsonl`:
 
 ```json
 {"ts":"2026-04-08T20:30:00Z","event":"start","app":"Netflix","title":"Ozymandias","series":"Breaking Bad","season":5,"episode":14,"duration":2820,"progress":0.0,"trakt_action":"start"}
@@ -153,7 +103,7 @@ Scrobble events are logged to `scrobble.jsonl`:
 
 ## Docker image
 
-The image uses a multi-stage build for a smaller footprint and runs as a non-root `scrobbler` user for security hardening. A built-in healthcheck verifies the asyncio event loop is alive by checking a heartbeat file written every 15 seconds — if the heartbeat is older than 60 seconds, the container is marked unhealthy.
+The image uses a multi-stage build for a smaller footprint. A built-in healthcheck verifies the asyncio event loop is alive by checking a heartbeat file written every 15 seconds — if the heartbeat is older than 60 seconds, the container is marked unhealthy. The entrypoint supports passing through commands (e.g. `atvremote scan`) for pairing and diagnostics.
 
 ## Deployment
 
@@ -169,7 +119,7 @@ docker compose up -d
 
 ## Known limitations
 
-- **pyatv pairing required** — the `.pyatv.conf` file must contain valid pairing credentials. If pairing expires or the Apple TV is factory reset, you will need to re-run `atvremote wizard` and restart the container.
+- **pyatv pairing required** — `data/.pyatv.conf` must contain valid pairing credentials. If pairing expires or the Apple TV is factory reset, re-run `docker compose run --rm atv-scrobbler atvremote wizard` and restart the container.
 - **Amazon Prime Video** reports `playbackRate=0.0` (appears paused when playing)
 - **Netflix** drops metadata during intros and between episodes
 - Some niche apps bypass the system media player and report nothing

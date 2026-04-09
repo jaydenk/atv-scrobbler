@@ -1,8 +1,6 @@
 # Runtime data (never committed)
 config.yaml
-trakt_tokens.json
-scrobble.jsonl
-.pyatv.conf
+data/
 
 # Python
 __pycache__/

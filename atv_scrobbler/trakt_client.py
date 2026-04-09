@@ -13,7 +13,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.trakt.tv"
-TOKENS_FILE = "trakt_tokens.json"
+TOKENS_FILE = "data/trakt_tokens.json"
 
 
 class TraktClient:

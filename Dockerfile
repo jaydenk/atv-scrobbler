@@ -10,23 +10,16 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Create non-root user
-RUN groupadd -r scrobbler && useradd -r -g scrobbler scrobbler
-
 # Copy installed packages from build stage
 COPY --from=build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=build /usr/local/bin /usr/local/bin
 
-# Copy application code
+# Copy application code and entrypoint
 COPY atv_scrobbler/ atv_scrobbler/
-
-# Runtime files (tokens, logs) are written to /app — must be writable
-RUN chown -R scrobbler:scrobbler /app
-
-USER scrobbler
+COPY entrypoint.sh /app/entrypoint.sh
 
 # Healthcheck: verify the asyncio event loop is alive by checking heartbeat freshness
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD python -c "import time; from pathlib import Path; t=float(Path('/app/heartbeat').read_text()); assert time.time()-t < 60" || exit 1
 
-ENTRYPOINT ["python", "-m", "atv_scrobbler"]
+ENTRYPOINT ["/app/entrypoint.sh"]

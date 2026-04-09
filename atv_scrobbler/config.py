@@ -33,7 +33,7 @@ class ScrobbleConfig:
 
 @dataclass
 class LoggingConfig:
-    file: str = "scrobble.jsonl"
+    file: str = "data/scrobble.jsonl"
     level: str = "info"
 
 
