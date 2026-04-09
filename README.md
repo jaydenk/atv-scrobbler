@@ -157,12 +157,15 @@ The image uses a multi-stage build for a smaller footprint and runs as a non-roo
 
 ## Deployment
 
-CI/CD is handled by GitHub Actions:
+On push to `main`, GitHub Actions builds a multi-architecture Docker image (linux/amd64, linux/arm64) and pushes it to `ghcr.io/jaydenk/atv-scrobbler:latest`.
 
-- **Build:** On push to `main`, a workflow builds a multi-architecture Docker image (linux/amd64, linux/arm64) and pushes it to `ghcr.io/jaydenk/atv-scrobbler:latest`.
-- **Deploy:** After a successful build, the workflow connects to **pimento** (Raspberry Pi 5) via Tailscale SSH and runs `docker compose pull && docker compose up -d` to roll out the new image.
+To update the running service, pull the new image and recreate the container:
 
-No manual builds or image transfers are required — merging to `main` triggers the full pipeline.
+```bash
+cd ~/services/atv-scrobbler
+docker compose pull
+docker compose up -d
+```
 
 ## Known limitations
 
