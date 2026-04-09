@@ -9,6 +9,7 @@ from typing import Any
 import pyatv
 from pyatv import interface
 from pyatv.const import DeviceState, MediaType
+from pyatv.storage.file_storage import FileStorage
 
 from .config import AppleTVConfig, ScrobbleConfig
 from .matcher import MediaInfo, extract_media_info
@@ -53,8 +54,14 @@ class ATVMonitor(interface.PushListener):
         await self._disconnect()
 
     async def _connect_and_listen(self) -> None:
+        loop = asyncio.get_running_loop()
+
+        # Load pairing credentials from pyatv's default storage (~/.pyatv.conf)
+        storage = FileStorage.default_storage(loop)
+        await storage.load()
+
         logger.info("Scanning for Apple TV...")
-        atvs = await pyatv.scan(asyncio.get_running_loop())
+        atvs = await pyatv.scan(loop, storage=storage)
 
         if not atvs:
             logger.error("No Apple TV found on the network")
@@ -66,7 +73,7 @@ class ATVMonitor(interface.PushListener):
             return
 
         logger.info("Connecting to %s (%s)...", config.name, config.address)
-        self._atv = await pyatv.connect(config, asyncio.get_running_loop())
+        self._atv = await pyatv.connect(config, loop, storage=storage)
         logger.info("Connected to %s", config.name)
 
         # Start push updates

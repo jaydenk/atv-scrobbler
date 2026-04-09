@@ -7,10 +7,13 @@ services:
     network_mode: host
     mem_limit: 128m
     memswap_limit: 128m
+    environment:
+      - HOME=/app
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./trakt_tokens.json:/app/trakt_tokens.json
       - ./scrobble.jsonl:/app/scrobble.jsonl
+      - ./.pyatv.conf:/app/.pyatv.conf
       - /etc/localtime:/etc/localtime:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import time; from pathlib import Path; t=float(Path('/app/heartbeat').read_text()); assert time.time()-t < 60"]

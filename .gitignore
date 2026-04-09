@@ -2,6 +2,7 @@
 config.yaml
 trakt_tokens.json
 scrobble.jsonl
+.pyatv.conf
 
 # Python
 __pycache__/
