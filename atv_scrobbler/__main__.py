@@ -26,11 +26,7 @@ logger = logging.getLogger("atv_scrobbler")
 # At "debug" level these get raised to INFO so the app's own debug
 # messages remain readable. At "trace" level they stay at TRACE.
 _NOISY_LOGGERS = [
-    "pyatv.protocols.companion.protocol",
-    "pyatv.protocols.companion.connection",
-    "pyatv.protocols.companion.api",
-    "pyatv.core.protocol",
-    "pyatv.core.facade",
+    "pyatv",
     "httpcore",
 ]
 
