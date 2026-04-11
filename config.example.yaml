@@ -28,5 +28,8 @@ scrobble:
 logging:
   # Path to the JSONL event log file (relative to /app in container)
   file: "data/scrobble.jsonl"
-  # Log level: debug, info, warning, error
+  # Log level: trace, debug, info, warning, error
+  # "debug" shows app-level debug messages while suppressing noisy libraries.
+  # "trace" is the full firehose — includes raw pyatv protocol frames and
+  # httpcore connection lifecycle events. Only useful for diagnosing protocol issues.
   level: "info"

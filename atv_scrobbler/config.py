@@ -34,6 +34,7 @@ class ScrobbleConfig:
 @dataclass
 class LoggingConfig:
     file: str = "data/scrobble.jsonl"
+    # trace | debug | info | warning | error
     level: str = "info"
 
 

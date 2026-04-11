@@ -15,22 +15,55 @@ from .monitor import ATVMonitor
 from .state import ScrobbleState
 from .trakt_client import TraktClient
 
+# Register custom TRACE level (below DEBUG)
+TRACE = 5
+logging.addLevelName(TRACE, "TRACE")
+logging.TRACE = TRACE  # type: ignore[attr-defined]
+
 logger = logging.getLogger("atv_scrobbler")
+
+# Third-party loggers that are excessively verbose at DEBUG level.
+# At "debug" level these get raised to INFO so the app's own debug
+# messages remain readable. At "trace" level they stay at TRACE.
+_NOISY_LOGGERS = [
+    "pyatv.protocols.companion.protocol",
+    "pyatv.protocols.companion.connection",
+    "pyatv.protocols.companion.api",
+    "pyatv.core.protocol",
+    "pyatv.core.facade",
+    "httpcore",
+]
+
+
+def _setup_logging(level_name: str) -> None:
+    level_name = level_name.upper()
+
+    if level_name == "TRACE":
+        root_level = TRACE
+    else:
+        root_level = getattr(logging, level_name, logging.INFO)
+
+    logging.basicConfig(
+        level=root_level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    # Always suppress httpx request-level logging
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    # At "debug" level, suppress the noisiest third-party loggers so the
+    # output stays useful for debugging app logic. "trace" leaves them open.
+    if level_name == "DEBUG":
+        for name in _NOISY_LOGGERS:
+            logging.getLogger(name).setLevel(logging.INFO)
 
 
 def main() -> None:
     config_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("config.yaml")
     config = Config.load(config_path)
 
-    # Setup logging
-    log_level = getattr(logging, config.logging.level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    # Suppress noisy httpx request logging
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    _setup_logging(config.logging.level)
 
     if not config.trakt.client_id or not config.trakt.client_secret:
         logger.error("Trakt client_id and client_secret must be set in config.yaml")

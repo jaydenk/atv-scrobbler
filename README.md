@@ -91,7 +91,7 @@ See `config.example.yaml` for all options. Key settings:
 | `scrobble.ignored_apps` | `com.apple.Fitness`, `com.apple.TVHomeScreen` | App bundle identifiers to skip |
 | `scrobble.media_types` | `video`, `tv` | What to scrobble (`video`, `tv`, `music`) |
 | `logging.file` | `data/scrobble.jsonl` | Path to the JSONL event log |
-| `logging.level` | `info` | Log level (`debug`, `info`, `warning`, `error`) |
+| `logging.level` | `info` | Log level: `trace`, `debug`, `info`, `warning`, `error`. `debug` shows app-level diagnostics; `trace` adds raw protocol frames. |
 
 ## Logs
 
